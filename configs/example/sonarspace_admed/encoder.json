@@ -1,0 +1,9 @@
+{
+  "encoder_name": "SonarSpaceEncoder",
+  "audio_column": null,
+  "text_column": "transcript",
+  "preprocessor": "facebook/seamless-m4t-v2-large",
+  "embedder": "facebook/seamless-m4t-v2-large",
+  "sr": 16000,
+  "device": "cuda:2"
+}

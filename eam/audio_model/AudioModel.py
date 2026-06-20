@@ -1,33 +1,22 @@
+from typing import override
 import torch
 from torch import nn
-from transformers import WhisperModel
 
+from .AudioModelConfig import AudioModelConfig
 from eam.unsupervised_model import Data2VecModelWithSharedExtractor
-from .WhisperEncoderConfig import WhisperEncoderConfig, get_default_config
 
 class AudioModel(Data2VecModelWithSharedExtractor):
-  def __init__(self, config: WhisperEncoderConfig | None) -> None:
-    if config == None:
-        config = get_default_config()
+  def __init__(self, config: AudioModelConfig) -> None:
     super().__init__(config)
-    model = WhisperModel.from_pretrained(config['whisper_variant'])
-    d_extractor = model.config.d_model
-    self.feature_encoder = model.get_encoder()
     self.sequence_transducer = nn.ModuleList([
       nn.TransformerEncoderLayer(
-          d_model=d_extractor,
+          d_model=config["feature_dims"],
           nhead=config["num_heads"],
           dim_feedforward=config["dim_ffd"],
           dropout=config["dropout"],
           batch_first=True
       )
-      for _ in range(num_layers)])
-
-  @override
-  def _encode_features(self, x: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
-    with torch.no_grad():
-        x = self.feature_encoder(x, attention_mask)
-    return x
+      for _ in range(config["num_layers"])])
 
   @override
   def _encode_sequence(self, x: torch.Tensor) -> torch.Tensor:

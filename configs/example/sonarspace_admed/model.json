@@ -1,0 +1,12 @@
+{
+  "num_layers": 6,
+  "dim_ffd": 1024,
+  "num_heads": 8,
+  "dropout": 0.2,
+  "K": 3,
+  "mask_p": 0.065,
+  "mask_steps": 10,
+  "output_dims": 768,
+  "feature_dims": 1024,
+  "device": "cuda:3"
+}

@@ -6,7 +6,7 @@ from .Data2VecModelWithSharedExtractorConfig import Data2VecModelWithSharedExtra
 
 class Data2VecModelWithSharedExtractor(ABC, nn.Module):
   """Set of sequence transducer layers to be used in Data2Vec training after masking"""
-  sequence_transducer: list[nn.Module]
+  sequence_transducer: nn.ModuleList
 
   config: Data2VecModelWithSharedExtractorConfig
 

@@ -1,0 +1,7 @@
+{
+  "student_model": null,
+  "annealing_warmup": 7500,
+  "annealing_init_value": 0.9990,
+  "annealing_target_value": 0.9999,
+  "copy_params": []
+}

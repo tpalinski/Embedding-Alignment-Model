@@ -2,11 +2,10 @@ import torch
 import copy
 from torch import nn
 
-from ema.unsupervised_model import Data2VecModel
-
+from eam.unsupervised_model import Data2VecModel, Data2VecModelWithSharedExtractor
 from .EMATrackingModelConfig import EMATrackingModelConfig
 
-class EMATrackingModel[T: Data2VecModel](nn.Module):
+class EMATrackingModel[T: Data2VecModel|Data2VecModelWithSharedExtractor](nn.Module):
 
   def __init__(self, config: EMATrackingModelConfig[T]) -> None:
     super().__init__()
