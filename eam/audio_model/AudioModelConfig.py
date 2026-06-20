@@ -1,0 +1,23 @@
+from dataclasses import dataclass
+from eam.unsupervised_model import Data2VecModelWithSharedExtractorConfig
+
+@dataclass
+class AudioModelConfig(Data2VecModelWithSharedExtractorConfig):
+    num_layers: int
+    dim_ffd: int
+    num_heads: int
+    dropout: float
+
+def get_default_config() -> AudioModelConfig:
+    return AudioModelConfig(
+        num_layers=3,
+        dim_ffd=256,
+        num_heads=8,
+        K=2,
+        mask_p=0.065,
+        mask_steps=10,
+        dropout=0.2,
+        output_dims=768,
+        feature_dims=768
+        )
+
