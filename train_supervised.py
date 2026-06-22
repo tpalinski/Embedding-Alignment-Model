@@ -1,10 +1,10 @@
 import argparse
 import threading
 from torch.utils.tensorboard import SummaryWriter
-from eam.train import train_audio
+from eam.alignment_model import AlignmentModel
+from eam.train import DualEncoderPipeline, train_audio, train_supervised
 from eam.dataset import get_dataset
-from eam.train.streaming.encoder import EncoderPipeline
-from eam.utils import construct_audio_model, construct_encoder, create_run_dir, save_configs, load_config_dir
+from eam.utils import construct_audio_model, construct_encoder, create_run_dir, load_pretrained_models, load_supervised_config_dir, save_configs, load_config_dir, save_supervised_configs
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -23,17 +23,21 @@ if __name__ == "__main__":
     run_path = create_run_dir()
     args = parse_args()
     config_dir = args.config_dir
-    train_cfg, model_cfg, encoder_cfg, dataset_cfg, teacher_cfg = load_config_dir(config_dir)
+    train_cfg, model_cfg, encoders_cfg, dataset_cfg, pretrained_cfg = load_supervised_config_dir(config_dir)
 
-    save_configs(run_path, train_cfg, model_cfg, encoder_cfg, dataset_cfg, teacher_cfg)
+    save_supervised_configs(run_path, train_cfg, model_cfg, encoders_cfg, dataset_cfg, pretrained_cfg)
 
     writer = SummaryWriter(log_dir=run_path / "logs" / "tensorboard")
 
     stop_event = threading.Event()
-    print("Loading model")
-    model, teacher_model = construct_audio_model(model_cfg, teacher_cfg)
-    print("Loading encoder")
-    encoder = construct_encoder(encoder_cfg)
+    print("Loading pretrained models")
+    audio_model, text_model = load_pretrained_models(pretrained_cfg)
+    print("Loading encoders")
+    audio_encoder = construct_encoder(encoders_cfg["audio"])
+    text_encoder = construct_encoder(encoders_cfg["text"])
+
+    print("Constructing alignment model")
+    alignment_model = AlignmentModel(model_cfg, audio_model, text_model)
 
     print("Fetching dataset loaders")
     ds = get_dataset(dataset_cfg)
@@ -44,11 +48,13 @@ if __name__ == "__main__":
         "val": val_loader,
         "test": test_loader
     }
-    pipeline = EncoderPipeline(
-        encoder,
+    pipeline = DualEncoderPipeline(
+        text_encoder,
+        audio_encoder,
         loaders,
         stop_event,
-        device=encoder_cfg["device"],
+        audio_device=encoders_cfg["audio"]["device"],
+        text_device=encoders_cfg["text"]["device"],
     )
     print("Preparing val and test cache")
     val_cache, test_cache = pipeline.prepare_cache()
@@ -63,7 +69,7 @@ if __name__ == "__main__":
     encoder_thread.start()
 
     print("Starting model training")
-    _ = train_audio(model, teacher_model, queue, train_len, val_cache, test_cache, writer, train_cfg, f"{run_path}/checkpoints/")
+    model = train_supervised(alignment_model, queue, train_len, val_cache, test_cache, writer, train_cfg, f"{run_path}/checkpoints/")
 
     stop_event.set()
     encoder_thread.join()

@@ -1,0 +1,9 @@
+{
+  "dataset_name": "AdmedVoiceDataset",
+  "audio_column": "audio_array",
+  "text_column": "transcript",
+  "dataset_path": "/home/student5/datasets/admed_voice",
+  "batch_size": 32,
+  "shuffle_train": true,
+  "distributed": false
+}
