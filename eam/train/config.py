@@ -10,3 +10,6 @@ class UnsupervisedTrainConfig(TypedDict):
     accum_steps: int
     warmup_steps: int
     distributed: bool
+    lambda_var: float
+    lambda_cov: float
+    gamma: float

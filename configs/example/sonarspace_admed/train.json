@@ -3,5 +3,8 @@
   "lr": 0.0001,
   "reg_term": 0.0001,
   "accum_steps": 8,
-  "warmup_steps": 5000
+  "warmup_steps": 5000,
+  "lambda_var": 10.0,
+  "lambda_cov": 1.0,
+  "gamma": 0.5
 }

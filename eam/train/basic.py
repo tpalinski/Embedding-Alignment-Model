@@ -37,13 +37,39 @@ def load_encoder(encoder_config: EncoderConfig) -> Encoder:
     encoder.eval()
     return encoder
 
-def masked_data2vec_loss(X_student, X_teacher, mask):
+def variance_loss(z, gamma=1.0, eps=1e-4):
+    # z: [B, T, D]
+    std = torch.sqrt(z.var(dim=(0,1), unbiased=False) + eps)
+    return torch.mean(F.relu(gamma - std))
+
+
+def covariance_loss(z):
+    # z: [B, T, D]
+    B, T, D = z.shape
+
+    z = z - z.mean(dim=(0,1), keepdim=True)
+
+    cov = torch.einsum('btd,bte->de', z, z) / (B * T - 1)
+
+    off_diag = cov - torch.diag(torch.diag(cov))
+    return (off_diag ** 2).sum() / D
+
+def masked_data2vec_loss(X_student, X_teacher, mask, lambda_var=10.0, lambda_cov=1.0, gamma=0.5):
     X_t = X_teacher.mean(dim=0)  # [B, T, D]
     X_s = X_student[-1]
     X_s = F.layer_norm(X_s, X_s.shape[-1:])
     X_t = F.layer_norm(X_t, X_t.shape[-1:])
-    loss = (X_s - X_t) ** 2
-    loss = (loss * mask).sum() / (mask.sum() * X_s.shape[-1])
+
+    loss_rec = (X_s - X_t) ** 2
+    loss_rec = (loss_rec * mask).sum() / (mask.sum() * X_s.shape[-1])
+
+    loss_var = variance_loss(X_s, gamma=gamma)
+    loss_cov = covariance_loss(X_s)
+
+    loss = loss_rec \
+         + lambda_var * loss_var \
+         + lambda_cov * loss_cov
+
     return loss
 
 def train_audio(
@@ -65,6 +91,9 @@ def train_audio(
     lr = config["lr"]
     accum_steps = config["accum_steps"]
     warmup_steps = config["warmup_steps"]
+    lambda_var = config["lambda_var"]
+    lambda_cov = config["lambda_cov"]
+    gamma = config["gamma"]
 
     device = torch.device(model.config["device"])
 
@@ -108,7 +137,7 @@ def train_audio(
             torch.cuda.current_stream().wait_stream(teacher_stream)
 
 
-            loss = criterion(outputs, teacher_hat, mask)
+            loss = criterion(outputs, teacher_hat, mask, lambda_var, lambda_cov, gamma)
             loss.backward()
 
             if (step + 1) % accum_steps == 0:
@@ -124,7 +153,7 @@ def train_audio(
             mask_total = torch.tensor(mask.numel(), device=device, dtype=torch.float32)
             mask_percent = (mask_percent / mask_total).item()
 
-            student_var = outputs[-1].var(dim=(0,1), unbiased=False).mean()  # mean over C
+            student_var = outputs.var(dim=(0,1,2), unbiased=False).mean()
             teacher_var = teacher_hat.var(dim=(0,1,2), unbiased=False).mean()
 
             if writer:
