@@ -1,47 +1,17 @@
-import threading
-from eam.encoder import Encoder, EncoderConfig, get_encoder
-from eam.audio_model import AudioModel, AudioModelConfig
-from eam.teacher_model import EMATrackingModel, EMATrackingModelConfig
-import torchaudio
+from eam.audio_model import AudioModel
+from eam.teacher_model import EMATrackingModel
 import torch
 import os
-import sys
-import datetime
 from tqdm.auto import tqdm
-from torch import nn
-from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.distributed as dist
 from queue import Queue
 import torch.nn.functional as F
-from torch.utils.tensorboard import SummaryWriter
 
 from .config import UnsupervisedTrainConfig
-
-def load_audio_model(
-        model_config: AudioModelConfig,
-        teacher_config: EMATrackingModelConfig[AudioModel],
-        seed=67):
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    model = AudioModel(model_config)
-    teacher_config["student_model"] = model
-    teacher_model = EMATrackingModel(teacher_config)
-    teacher_model.requires_grad_(False)
-    for param in teacher_model.parameters():
-        param.requires_grad = False
-    # Move to specific GPU
-    return model, teacher_model
-
-def load_encoder(encoder_config: EncoderConfig) -> Encoder:
-    encoder = get_encoder(encoder_config)
-    encoder.eval()
-    return encoder
 
 def variance_loss(z, gamma=1.0, eps=1e-4):
     # z: [B, T, D]
     std = torch.sqrt(z.var(dim=(0,1), unbiased=False) + eps)
     return torch.mean(F.relu(gamma - std))
-
 
 def covariance_loss(z):
     # z: [B, T, D]

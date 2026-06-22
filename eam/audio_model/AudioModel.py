@@ -32,3 +32,22 @@ class AudioModel(Data2VecModelWithSharedExtractor):
         hidden_states.append(x)
     # Stack -> [K, B, T, C]
     return torch.stack(hidden_states, dim=0)
+
+class PretrainedAudioModel(nn.Module):
+    def __init__(self, config: AudioModelConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.sequence_transducer = nn.ModuleList([
+          nn.TransformerEncoderLayer(
+              d_model=config["feature_dims"],
+              nhead=config["num_heads"],
+              dim_feedforward=config["dim_ffd"],
+              dropout=config["dropout"],
+              batch_first=True
+          )
+          for _ in range(config["num_layers"])])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        for layer in self.sequence_transducer:
+            x = layer(x)
+        return x

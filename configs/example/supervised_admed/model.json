@@ -1,0 +1,8 @@
+{
+  "device": "cuda:2",
+  "input_dim": 1024,
+  "embedding_dim": 512,
+  "num_heads": 8,
+  "dropout": 0.1,
+  "use_training_cross_attention": true
+}

@@ -1,15 +1,33 @@
+from collections import defaultdict
 import os
+import random
+import re
+import unicodedata
+from tqdm.auto import tqdm
 from typing import override
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset as TorchDataset, DataLoader
+from torch.utils.data import Dataset as TorchDataset, DataLoader, Sampler
 import torchaudio
 import torch.nn.functional as F
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
 from eam.dataset.Dataset import Dataset, DatasetSplit
 from eam.dataset.config import DatasetConfig
 from eam.dataset.registry import register
+
+def normalize_transcript(text: str) -> str:
+    text = unicodedata.normalize("NFKC", text)
+    text = text.lower()
+
+    # Remove punctuation
+    text = re.sub(r"[^\w\s]", " ", text)
+
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text)
+
+    return text.strip()
 
 @register
 class AdmedVoiceDataset(Dataset):
@@ -68,6 +86,7 @@ class AdmedVoiceDataset(Dataset):
             random_state=67,
         )
 
+        corpus["transcript"] = corpus["phrase"].apply(normalize_transcript)
         train_corpus = corpus[corpus["speaker_id"].isin(train_speakers)]
         val_corpus = corpus[corpus["speaker_id"].isin(val_speakers)]
         test_corpus = corpus[corpus["speaker_id"].isin(test_speakers)]
@@ -79,13 +98,43 @@ class AdmedVoiceDataset(Dataset):
                 DatasetSplit.VALIDATION: val_ds,
                 DatasetSplit.TEST: test_ds
         }
+    @override
+    def get_collate_function(self, pad_value=0.0):
+        audio_key = self.config["audio_column"]
+        text_key = self.config["text_column"]
+
+        def collate(batch):
+            waveforms = [b[audio_key] for b in batch]
+            lengths = torch.tensor([w.size(0) for w in waveforms])
+
+            padded_waveforms = pad_sequence(
+                waveforms,
+                batch_first=True,
+                padding_value=pad_value
+            )
+
+            texts = [b[text_key] for b in batch]
+            sample_rates = torch.tensor([b["sampling_rate"] for b in batch])
+
+            return {
+                audio_key: padded_waveforms,
+                "lengths": lengths,
+                "sampling_rate": sample_rates,
+                text_key: texts,
+            }
+
+        return collate
+
+    @override
+    def get_train_sampler(self) -> Sampler | None:
+        return UniqueTranscriptBatchSampler(self.splits[DatasetSplit.TRAIN], self.config["batch_size"], self.config["text_column"])
+
 
 class AdmedSplit(TorchDataset):
-    def __init__(self, corpus_df: pd.DataFrame, config: DatasetConfig, max_seconds=30):
+    def __init__(self, corpus_df: pd.DataFrame, config: DatasetConfig):
         self.corpus = corpus_df.reset_index(drop=True)
         self.config = config
         self.target_sr = 16000
-        self.fixed_len = self.target_sr * max_seconds
 
     def __len__(self):
         return len(self.corpus)
@@ -110,23 +159,61 @@ class AdmedSplit(TorchDataset):
             )(waveform)
             sample_rate = self.target_sr
 
-        length = waveform.size(0)
-
-        if length > self.fixed_len:
-            # random crop (better for training)
-            start = torch.randint(0, length - self.fixed_len + 1, (1,)).item()
-            waveform = waveform[start:start + self.fixed_len]
-        else:
-            # pad
-            pad = self.fixed_len - length
-            waveform = F.pad(waveform, (0, pad))
-
         return {
-            self.config["audio_column"]: waveform,
+            self.config["audio_column"]: waveform,  # variable length now
             "sampling_rate": sample_rate,
-            self.config["text_column"]: item["phrase"],
+            self.config["text_column"]: item["transcript"],
         }
 
+
+class UniqueTranscriptBatchSampler(Sampler):
+    def __init__(self, dataset, batch_size, text_key):
+        self.dataset = dataset
+        self.batch_size = batch_size
+
+        self.text_keys = []
+
+        for i in tqdm(range(len(dataset)), desc="Indexing train dataset"):
+            item = dataset[i]
+            self.text_keys.append(item[text_key])
+
+    def __iter__(self):
+        indices = list(range(len(self.dataset)))
+        random.shuffle(indices)
+
+        batch = []
+        batch_keys = set()
+
+        deferred = []
+
+        while indices:
+            idx = indices.pop()
+
+            key = self.text_keys[idx]
+
+            if key in batch_keys:
+                deferred.append(idx)
+                continue
+
+            batch.append(idx)
+            batch_keys.add(key)
+
+            if len(batch) == self.batch_size:
+                yield batch
+
+                indices.extend(deferred)
+                deferred.clear()
+
+                random.shuffle(indices)
+
+                batch = []
+                batch_keys = set()
+
+        if batch:
+            yield batch
+
+    def __len__(self):
+        return len(self.dataset) // self.batch_size
 
 def get_default_config() -> DatasetConfig:
     return DatasetConfig(

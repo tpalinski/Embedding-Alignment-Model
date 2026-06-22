@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import TypedDict
 from eam.unsupervised_model import Data2VecModelWithSharedExtractorConfig
 
 @dataclass

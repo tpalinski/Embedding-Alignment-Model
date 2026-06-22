@@ -1,0 +1,12 @@
+{
+  "audio": {
+    "model_config_path": "",
+    "model_path": "",
+    "model_device": "cuda:2"
+  },
+  "text": {
+    "model_config_path": "",
+    "model_path": "",
+    "model_device": "cuda:2"
+  }
+}

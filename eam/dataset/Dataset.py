@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import TypedDict
-from torch.utils.data import Dataset as TorchDataset, DataLoader, DistributedSampler
+from torch.utils.data import Dataset as TorchDataset, DataLoader, DistributedSampler, Sampler
 import torch.distributed as dist
 from enum import Enum
 
@@ -39,13 +39,26 @@ class Dataset(ABC):
     def get_split(self, split: DatasetSplit):
         return self.splits[split]
 
+    @abstractmethod
+    def get_train_sampler(self) -> Sampler | None:
+        pass
+
+    @abstractmethod
+    def get_collate_function(self):
+        pass
+
     """Get train, validation and test dataloader for the dataset"""
     def get_loaders(self) -> tuple[DataLoader, DataLoader, DataLoader]:
         batch_size = self.config["batch_size"]
         shuffle = self.config["shuffle_train"]
-        train_loader = DataLoader(self.splits[DatasetSplit.TRAIN], shuffle=shuffle, batch_size=batch_size)
-        val_loader = DataLoader(self.splits[DatasetSplit.VALIDATION], shuffle=False, batch_size=batch_size)
-        test_loader = DataLoader(self.splits[DatasetSplit.TEST], shuffle=False, batch_size=batch_size)
+        collate_fn = self.get_collate_function()
+        sampler = self.get_train_sampler()
+        if sampler is not None:
+            train_loader = DataLoader(self.splits[DatasetSplit.TRAIN], batch_sampler=sampler, collate_fn=collate_fn)
+        else:
+            train_loader = DataLoader(self.splits[DatasetSplit.TRAIN], shuffle=shuffle, batch_size=batch_size, collate_fn=collate_fn)
+        val_loader = DataLoader(self.splits[DatasetSplit.VALIDATION], shuffle=False, batch_size=batch_size, collate_fn=collate_fn)
+        test_loader = DataLoader(self.splits[DatasetSplit.TEST], shuffle=False, batch_size=batch_size, collate_fn=collate_fn)
         return train_loader, val_loader, test_loader
 
     """Get train, validation and test dataloader for the dataset for distributed training"""
