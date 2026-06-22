@@ -153,8 +153,8 @@ def train_audio(
             mask_total = torch.tensor(mask.numel(), device=device, dtype=torch.float32)
             mask_percent = (mask_percent / mask_total).item()
 
-            student_var = outputs.var(dim=(0,1,2), unbiased=False).mean()
-            teacher_var = teacher_hat.var(dim=(0,1,2), unbiased=False).mean()
+            student_var = outputs[-1].var(dim=(0,1), unbiased=False).mean()
+            teacher_var = teacher_hat[-1].var(dim=(0,1), unbiased=False).mean()
 
             if writer:
                 writer.add_scalar("train/batch_loss", loss.item(), batches)
